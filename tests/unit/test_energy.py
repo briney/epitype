@@ -244,8 +244,8 @@ class TestCalculateBindingEnergy:
             structure, separated, interface, minimize=False
         )
 
-        # Default should be vacuum with 0.15 M salt
-        assert result.solvent_model == "vacuum"
+        # Default should be obc2 with 0.15 M salt
+        assert result.solvent_model == "obc2"
         assert result.salt_concentration == 0.15
 
 
@@ -281,10 +281,10 @@ class TestSolventModel:
 class TestSolventConfig:
     """Tests for SolventConfig dataclass."""
 
-    def test_default_is_vacuum(self):
-        """Test that default configuration uses vacuum."""
+    def test_default_is_obc2(self):
+        """Test that default configuration uses obc2."""
         config = SolventConfig()
-        assert config.model == SolventModel.VACUUM
+        assert config.model == SolventModel.OBC2
         assert config.salt_concentration == 0.15
         assert config.solvent_dielectric == 80.0
         assert config.solute_dielectric == 1.0
@@ -386,17 +386,17 @@ class TestImplicitSolventEnergy:
         assert energy_obc2 != energy_gbn
 
 
-class TestBackwardCompatibility:
-    """Tests ensuring backward compatibility."""
+class TestDefaultSolventModel:
+    """Tests ensuring default solvent model is OBC2."""
 
-    def test_default_solvent_config_is_vacuum(self):
-        """Test that default solvent config uses vacuum model."""
+    def test_default_solvent_config_is_obc2(self):
+        """Test that default solvent config uses obc2 model."""
         config = SolventConfig()
-        assert config.model == SolventModel.VACUUM
+        assert config.model == SolventModel.OBC2
 
     @pytest.mark.slow
-    def test_binding_energy_default_uses_vacuum_model(self, pdb_1yy9: Path):
-        """Test that binding energy without solvent_config reports vacuum model."""
+    def test_binding_energy_default_uses_obc2_model(self, pdb_1yy9: Path):
+        """Test that binding energy without solvent_config reports obc2 model."""
         structure = parse_structure(pdb_1yy9)
         interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
         separated = separate_chains(structure, interface)
@@ -406,17 +406,21 @@ class TestBackwardCompatibility:
             structure, separated, interface, minimize=False
         )
 
-        # Should report vacuum model
-        assert result.solvent_model == "vacuum"
+        # Should report obc2 model
+        assert result.solvent_model == "obc2"
         assert result.salt_concentration == 0.15  # default
 
     @pytest.mark.slow
     def test_prepare_structure_default_uses_vacuum(self, pdb_1yy9: Path):
-        """Test that prepare_structure_for_openmm without solvent_model uses vacuum."""
+        """Test that prepare_structure_for_openmm without solvent_model uses vacuum.
+
+        Note: The function's default parameter is still VACUUM for backward compatibility
+        with code that calls it directly. The higher-level SolventConfig default is OBC2.
+        """
         structure = parse_structure(pdb_1yy9)
         structure = structure.subset(["A"])
 
-        # Default call should work (vacuum)
+        # Default call should work (vacuum - the function's own default)
         modeller, forcefield = prepare_structure_for_openmm(structure)
 
         # Should be able to calculate energy

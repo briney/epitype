@@ -29,7 +29,7 @@ class AnalysisConfig:
     compute_shape: bool = True
     compute_packstat: bool = True
     # Solvent configuration for energy calculations
-    solvent_model: SolventModel = field(default=SolventModel.VACUUM)
+    solvent_model: SolventModel = field(default=SolventModel.OBC2)
     salt_concentration: float = 0.15  # Molar (PBS-like conditions)
 
 

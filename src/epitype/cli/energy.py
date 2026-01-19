@@ -31,7 +31,7 @@ def energy_command(
         help="Minimize energy before calculation",
     ),
     solvent: SolventModel = typer.Option(
-        SolventModel.VACUUM,
+        SolventModel.OBC2,
         "--solvent",
         "-s",
         help="Implicit solvent model: vacuum, obc2, gbn, hct",

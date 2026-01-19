@@ -27,6 +27,36 @@ def _check_openmm_available() -> bool:
     return _openmm_available
 
 
+def _get_best_platform() -> tuple:
+    """Select the best available OpenMM platform with fallback.
+
+    Tries platforms in order of performance: CUDA > OpenCL > CPU > Reference.
+    GPU platforms (CUDA/OpenCL) use mixed precision for best speed/accuracy balance.
+
+    Returns:
+        Tuple of (Platform, properties_dict)
+    """
+    from openmm import Platform
+
+    # Platform preference order and their properties
+    platforms = [
+        ("CUDA", {"Precision": "mixed"}),
+        ("OpenCL", {"Precision": "mixed"}),
+        ("CPU", {}),
+        ("Reference", {}),
+    ]
+
+    for name, properties in platforms:
+        try:
+            platform = Platform.getPlatformByName(name)
+            return platform, properties
+        except Exception:
+            continue
+
+    # Should never reach here (Reference is always available)
+    raise RuntimeError("No OpenMM platform available")
+
+
 # Conversion: kJ/mol to kcal/mol
 KJ_TO_REU = 0.239  # 1 kJ/mol ~ 0.239 kcal/mol
 
@@ -67,7 +97,7 @@ class SolventConfig:
         solute_dielectric: Dielectric constant of solute interior (default 1.0)
     """
 
-    model: SolventModel = SolventModel.VACUUM
+    model: SolventModel = SolventModel.OBC2
     salt_concentration: float = 0.15
     solvent_dielectric: float = 80.0
     solute_dielectric: float = 1.0
@@ -193,9 +223,11 @@ def calculate_potential_energy(
         0.002 * unit.picoseconds,
     )
 
-    # Create simulation
-    platform = Platform.getPlatformByName("CPU")
-    simulation = app.Simulation(modeller.topology, system, integrator, platform)
+    # Create simulation with best available platform (GPU if available)
+    platform, platform_properties = _get_best_platform()
+    simulation = app.Simulation(
+        modeller.topology, system, integrator, platform, platform_properties
+    )
     simulation.context.setPositions(modeller.positions)
 
     if minimize:

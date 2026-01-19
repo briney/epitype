@@ -53,7 +53,7 @@ def run_command(
         help="Skip PackStat calculation (faster)",
     ),
     solvent: SolventModel = typer.Option(
-        SolventModel.VACUUM,
+        SolventModel.OBC2,
         "--solvent",
         "-s",
         help="Implicit solvent model for energy: vacuum, obc2, gbn, hct",
