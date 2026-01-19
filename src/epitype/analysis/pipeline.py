@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from epitype.core.interface import detect_interface, parse_chain_groups
@@ -10,6 +10,7 @@ from epitype.core.separation import separate_chains
 from epitype.core.structure import Structure
 from epitype.core.types import InterfaceMetrics
 from epitype.io.parsers import parse_structure
+from epitype.metrics.energy import SolventModel
 from epitype.metrics.hbonds import analyze_hbonds
 from epitype.metrics.packstat import calculate_packstat
 from epitype.metrics.sasa import calculate_sasa
@@ -27,6 +28,9 @@ class AnalysisConfig:
     compute_energy: bool = True
     compute_shape: bool = True
     compute_packstat: bool = True
+    # Solvent configuration for energy calculations
+    solvent_model: SolventModel = field(default=SolventModel.VACUUM)
+    salt_concentration: float = 0.15  # Molar (PBS-like conditions)
 
 
 ProgressCallback = Callable[[str, float], None]
@@ -92,16 +96,23 @@ def analyze_interface(
     if config.compute_energy:
         try:
             from epitype.metrics.energy import (
+                SolventConfig,
                 calculate_binding_energy,
                 check_openmm_available,
             )
             if check_openmm_available():
-                dG = calculate_binding_energy(
+                solvent_config = SolventConfig(
+                    model=config.solvent_model,
+                    salt_concentration=config.salt_concentration,
+                )
+                energy_result = calculate_binding_energy(
                     structure,
                     separated,
                     interface,
                     minimize=config.minimize_energy,
+                    solvent_config=solvent_config,
                 )
+                dG = energy_result.dG_separated
         except ImportError:
             pass  # OpenMM not available
 
@@ -188,11 +199,21 @@ def analyze_structure(
     if config.compute_energy:
         try:
             from epitype.metrics.energy import (
+                SolventConfig,
                 calculate_binding_energy,
                 check_openmm_available,
             )
             if check_openmm_available():
-                dG = calculate_binding_energy(structure, separated, interface, minimize=config.minimize_energy)
+                solvent_config = SolventConfig(
+                    model=config.solvent_model,
+                    salt_concentration=config.salt_concentration,
+                )
+                energy_result = calculate_binding_energy(
+                    structure, separated, interface,
+                    minimize=config.minimize_energy,
+                    solvent_config=solvent_config,
+                )
+                dG = energy_result.dG_separated
         except ImportError:
             pass
 

@@ -10,6 +10,9 @@ from epitype.core.structure import Structure
 from epitype.io.parsers import parse_structure
 from epitype.metrics.energy import (
     KJ_TO_REU,
+    BindingEnergyResult,
+    SolventConfig,
+    SolventModel,
     _write_temp_pdb,
     calculate_binding_energy,
     calculate_potential_energy,
@@ -192,22 +195,25 @@ class TestCalculateBindingEnergy:
     """Tests for binding energy calculation."""
 
     @pytest.mark.slow
-    def test_binding_energy_is_float(self, pdb_1yy9: Path):
-        """Test that binding energy calculation returns a float."""
+    def test_binding_energy_returns_result(self, pdb_1yy9: Path):
+        """Test that binding energy calculation returns BindingEnergyResult."""
         structure = parse_structure(pdb_1yy9)
         interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
         separated = separate_chains(structure, interface)
 
         # This test is slow, so we use a simplified calculation
-        energy = calculate_binding_energy(
+        result = calculate_binding_energy(
             structure, separated, interface, minimize=False
         )
 
-        assert isinstance(energy, float)
+        assert isinstance(result, BindingEnergyResult)
+        assert isinstance(result.dG_separated, float)
+        assert isinstance(result.energy_complex, float)
+        assert isinstance(result.energy_separated, float)
 
     @pytest.mark.slow
     def test_binding_energy_with_minimization(self, pdb_1yy9: Path):
-        """Test that binding energy calculation with minimization returns valid float.
+        """Test that binding energy calculation with minimization returns valid result.
 
         Note: In vacuum calculations without solvation, binding energy may be
         positive or negative depending on the system and minimization results.
@@ -218,14 +224,29 @@ class TestCalculateBindingEnergy:
         interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
         separated = separate_chains(structure, interface)
 
-        energy = calculate_binding_energy(
+        result = calculate_binding_energy(
             structure, separated, interface, minimize=True
         )
 
-        # Just verify we get a valid float result
-        assert isinstance(energy, float)
-        assert not np.isnan(energy)
-        assert not np.isinf(energy)
+        # Just verify we get a valid result
+        assert isinstance(result, BindingEnergyResult)
+        assert not np.isnan(result.dG_separated)
+        assert not np.isinf(result.dG_separated)
+
+    @pytest.mark.slow
+    def test_binding_energy_result_includes_metadata(self, pdb_1yy9: Path):
+        """Test that result includes solvent metadata."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        separated = separate_chains(structure, interface)
+
+        result = calculate_binding_energy(
+            structure, separated, interface, minimize=False
+        )
+
+        # Default should be vacuum with 0.15 M salt
+        assert result.solvent_model == "vacuum"
+        assert result.salt_concentration == 0.15
 
 
 class TestKJtoREU:
@@ -239,3 +260,166 @@ class TestKJtoREU:
         """Test that conversion constant is in reasonable range."""
         # 1 kJ/mol ~ 0.239 kcal/mol
         assert 0.2 < KJ_TO_REU < 0.3
+
+
+class TestSolventModel:
+    """Tests for SolventModel enum."""
+
+    def test_all_models_defined(self):
+        """Test that all expected solvent models are defined."""
+        models = {m.value for m in SolventModel}
+        assert models == {"vacuum", "obc2", "gbn", "hct"}
+
+    def test_vacuum_is_string_enum(self):
+        """Test that SolventModel values are strings."""
+        assert SolventModel.VACUUM.value == "vacuum"
+        assert SolventModel.OBC2.value == "obc2"
+        assert SolventModel.GBN.value == "gbn"
+        assert SolventModel.HCT.value == "hct"
+
+
+class TestSolventConfig:
+    """Tests for SolventConfig dataclass."""
+
+    def test_default_is_vacuum(self):
+        """Test that default configuration uses vacuum."""
+        config = SolventConfig()
+        assert config.model == SolventModel.VACUUM
+        assert config.salt_concentration == 0.15
+        assert config.solvent_dielectric == 80.0
+        assert config.solute_dielectric == 1.0
+
+    def test_custom_config(self):
+        """Test creating custom solvent configuration."""
+        config = SolventConfig(
+            model=SolventModel.OBC2,
+            salt_concentration=0.3,
+            solvent_dielectric=78.0,
+        )
+        assert config.model == SolventModel.OBC2
+        assert config.salt_concentration == 0.3
+        assert config.solvent_dielectric == 78.0
+
+
+class TestBindingEnergyResultDataclass:
+    """Tests for BindingEnergyResult dataclass."""
+
+    def test_result_has_expected_fields(self):
+        """Test that BindingEnergyResult has all expected fields."""
+        result = BindingEnergyResult(
+            dG_separated=-10.5,
+            energy_complex=-1000.0,
+            energy_separated=-950.0,
+            solvent_model="obc2",
+            salt_concentration=0.15,
+        )
+        assert result.dG_separated == -10.5
+        assert result.energy_complex == -1000.0
+        assert result.energy_separated == -950.0
+        assert result.solvent_model == "obc2"
+        assert result.salt_concentration == 0.15
+
+
+class TestImplicitSolventEnergy:
+    """Tests for implicit solvent energy calculations."""
+
+    @pytest.mark.slow
+    def test_obc2_produces_different_energy_than_vacuum(self, pdb_1yy9: Path):
+        """Test that OBC2 implicit solvent produces different energy than vacuum."""
+        structure = parse_structure(pdb_1yy9)
+        # Use single chain for faster test
+        structure = structure.subset(["A"])
+
+        # Vacuum calculation
+        modeller1, forcefield1 = prepare_structure_for_openmm(
+            structure, SolventModel.VACUUM
+        )
+        energy_vacuum = calculate_potential_energy(modeller1, forcefield1)
+
+        # OBC2 calculation
+        modeller2, forcefield2 = prepare_structure_for_openmm(
+            structure, SolventModel.OBC2
+        )
+        energy_obc2 = calculate_potential_energy(modeller2, forcefield2)
+
+        # Energies should be different (solvation adds significant contribution)
+        assert energy_vacuum != energy_obc2
+
+    @pytest.mark.slow
+    def test_binding_energy_with_obc2(self, pdb_1yy9: Path):
+        """Test binding energy calculation with OBC2 implicit solvent."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        separated = separate_chains(structure, interface)
+
+        solvent_config = SolventConfig(model=SolventModel.OBC2)
+        result = calculate_binding_energy(
+            structure, separated, interface,
+            minimize=False,
+            solvent_config=solvent_config,
+        )
+
+        assert isinstance(result, BindingEnergyResult)
+        assert not np.isnan(result.dG_separated)
+        assert not np.isinf(result.dG_separated)
+        assert result.solvent_model == "obc2"
+
+    @pytest.mark.slow
+    def test_different_gb_models_produce_different_energies(self, pdb_1yy9: Path):
+        """Test that different GB models produce different energies."""
+        structure = parse_structure(pdb_1yy9)
+        structure = structure.subset(["A"])
+
+        # OBC2
+        modeller1, forcefield1 = prepare_structure_for_openmm(
+            structure, SolventModel.OBC2
+        )
+        energy_obc2 = calculate_potential_energy(modeller1, forcefield1)
+
+        # GBN
+        modeller2, forcefield2 = prepare_structure_for_openmm(
+            structure, SolventModel.GBN
+        )
+        energy_gbn = calculate_potential_energy(modeller2, forcefield2)
+
+        # Different models should produce different energies
+        assert energy_obc2 != energy_gbn
+
+
+class TestBackwardCompatibility:
+    """Tests ensuring backward compatibility."""
+
+    def test_default_solvent_config_is_vacuum(self):
+        """Test that default solvent config uses vacuum model."""
+        config = SolventConfig()
+        assert config.model == SolventModel.VACUUM
+
+    @pytest.mark.slow
+    def test_binding_energy_default_uses_vacuum_model(self, pdb_1yy9: Path):
+        """Test that binding energy without solvent_config reports vacuum model."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        separated = separate_chains(structure, interface)
+
+        # Without solvent_config
+        result = calculate_binding_energy(
+            structure, separated, interface, minimize=False
+        )
+
+        # Should report vacuum model
+        assert result.solvent_model == "vacuum"
+        assert result.salt_concentration == 0.15  # default
+
+    @pytest.mark.slow
+    def test_prepare_structure_default_uses_vacuum(self, pdb_1yy9: Path):
+        """Test that prepare_structure_for_openmm without solvent_model uses vacuum."""
+        structure = parse_structure(pdb_1yy9)
+        structure = structure.subset(["A"])
+
+        # Default call should work (vacuum)
+        modeller, forcefield = prepare_structure_for_openmm(structure)
+
+        # Should be able to calculate energy
+        energy = calculate_potential_energy(modeller, forcefield)
+        assert isinstance(energy, float)
+        assert not np.isnan(energy)

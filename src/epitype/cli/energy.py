@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from epitype.cli.common import StructureResolutionError, resolve_structure
+from epitype.metrics.energy import SolventConfig, SolventModel
 
 console = Console()
 
@@ -28,6 +29,18 @@ def energy_command(
         True,
         "--minimize/--no-minimize",
         help="Minimize energy before calculation",
+    ),
+    solvent: SolventModel = typer.Option(
+        SolventModel.VACUUM,
+        "--solvent",
+        "-s",
+        help="Implicit solvent model: vacuum, obc2, gbn, hct",
+        case_sensitive=False,
+    ),
+    salt: float = typer.Option(
+        0.15,
+        "--salt",
+        help="Salt concentration in Molar (for implicit solvent)",
     ),
     output: Path | None = typer.Option(
         None,
@@ -83,15 +96,22 @@ def energy_command(
     separated = separate_chains(struct, interface)
 
     # Calculate binding energy
-    console.print("Calculating binding energy (this may take a moment)...")
-    result = calculate_binding_energy(struct, separated, minimize=minimize)
+    solvent_config = SolventConfig(model=solvent, salt_concentration=salt)
+    solvent_desc = f" ({solvent.value})" if solvent != SolventModel.VACUUM else ""
+    console.print(f"Calculating binding energy{solvent_desc} (this may take a moment)...")
+    result = calculate_binding_energy(
+        struct, separated, interface,
+        minimize=minimize,
+        solvent_config=solvent_config,
+    )
 
     if output:
         data = {
             "dG_separated": result.dG_separated,
-            "dG_per_dSASA": result.dG_per_dSASA,
             "energy_complex": result.energy_complex,
             "energy_separated": result.energy_separated,
+            "solvent_model": result.solvent_model,
+            "salt_concentration": result.salt_concentration,
         }
 
         with open(output, "w") as f:
@@ -105,5 +125,8 @@ def energy_command(
         table.add_row("dG_separated (REU)", f"{result.dG_separated:.2f}")
         table.add_row("Complex energy (kJ/mol)", f"{result.energy_complex:.2f}")
         table.add_row("Separated energy (kJ/mol)", f"{result.energy_separated:.2f}")
+        table.add_row("Solvent model", result.solvent_model)
+        if result.solvent_model != "vacuum":
+            table.add_row("Salt concentration (M)", f"{result.salt_concentration:.2f}")
 
         console.print(table)

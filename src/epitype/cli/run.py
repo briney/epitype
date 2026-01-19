@@ -10,6 +10,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from epitype.analysis.pipeline import AnalysisConfig, analyze_interface
 from epitype.cli.common import StructureResolutionError, resolve_structure
 from epitype.io.writers import format_metrics_table, write_csv, write_json
+from epitype.metrics.energy import SolventModel
 
 console = Console()
 
@@ -51,6 +52,18 @@ def run_command(
         "--no-packstat",
         help="Skip PackStat calculation (faster)",
     ),
+    solvent: SolventModel = typer.Option(
+        SolventModel.VACUUM,
+        "--solvent",
+        "-s",
+        help="Implicit solvent model for energy: vacuum, obc2, gbn, hct",
+        case_sensitive=False,
+    ),
+    salt: float = typer.Option(
+        0.15,
+        "--salt",
+        help="Salt concentration in Molar (for implicit solvent)",
+    ),
     quiet: bool = typer.Option(
         False,
         "--quiet",
@@ -81,6 +94,8 @@ def run_command(
         compute_energy=not no_energy,
         compute_shape=not no_shape,
         compute_packstat=not no_packstat,
+        solvent_model=solvent,
+        salt_concentration=salt,
     )
 
     try:

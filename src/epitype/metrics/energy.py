@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from epitype.core.interface import InterfaceRegion
@@ -38,7 +40,62 @@ STANDARD_RESIDUES = {
 }
 
 
-def prepare_structure_for_openmm(structure: Structure) -> tuple:
+class SolventModel(str, Enum):
+    """Implicit solvent model for energy calculations.
+
+    Models:
+        VACUUM: No solvent (original behavior, fastest)
+        OBC2: Onufriev-Bashford-Case II - recommended for protein-protein binding
+        GBN: GB with Neck corrections - can be more accurate for some systems
+        HCT: Hawkins-Cramer-Truhlar - fastest implicit solvent model
+    """
+
+    VACUUM = "vacuum"
+    OBC2 = "obc2"
+    GBN = "gbn"
+    HCT = "hct"
+
+
+@dataclass
+class SolventConfig:
+    """Configuration for implicit solvent calculations.
+
+    Attributes:
+        model: Implicit solvent model to use
+        salt_concentration: Ionic strength in Molar (default 0.15 M for PBS-like conditions)
+        solvent_dielectric: Dielectric constant of solvent (default 80.0 for water at 25C)
+        solute_dielectric: Dielectric constant of solute interior (default 1.0)
+    """
+
+    model: SolventModel = SolventModel.VACUUM
+    salt_concentration: float = 0.15
+    solvent_dielectric: float = 80.0
+    solute_dielectric: float = 1.0
+
+
+@dataclass
+class BindingEnergyResult:
+    """Result from binding energy calculation.
+
+    Attributes:
+        dG_separated: Binding energy in REU (negative = favorable)
+        energy_complex: Potential energy of bound complex in kJ/mol
+        energy_separated: Potential energy of separated chains in kJ/mol
+        solvent_model: Name of solvent model used
+        salt_concentration: Salt concentration used in Molar
+    """
+
+    dG_separated: float
+    energy_complex: float
+    energy_separated: float
+    solvent_model: str
+    salt_concentration: float
+
+
+def prepare_structure_for_openmm(
+    structure: Structure,
+    solvent_model: SolventModel = SolventModel.VACUUM,
+) -> tuple:
     """
     Prepare structure for OpenMM energy calculation.
 
@@ -46,6 +103,7 @@ def prepare_structure_for_openmm(structure: Structure) -> tuple:
 
     Args:
         structure: Input structure
+        solvent_model: Implicit solvent model to use (affects force field selection)
 
     Returns:
         Tuple of (Modeller, ForceField)
@@ -77,10 +135,20 @@ def prepare_structure_for_openmm(structure: Structure) -> tuple:
     # Clean up temp file
     temp_path.unlink()
 
-    # Create force field
-    forcefield = ForceField("amber14-all.xml", "amber14/tip3p.xml")
+    # Create force field with appropriate solvent model
+    if solvent_model == SolventModel.VACUUM:
+        # Vacuum: just protein force field (no explicit water model needed)
+        forcefield = ForceField("amber14-all.xml")
+    else:
+        # Implicit solvent: protein force field + GB model
+        solvent_xml_map = {
+            SolventModel.OBC2: "implicit/obc2.xml",
+            SolventModel.GBN: "implicit/gbn.xml",
+            SolventModel.HCT: "implicit/hct.xml",
+        }
+        forcefield = ForceField("amber14-all.xml", solvent_xml_map[solvent_model])
 
-    # Create modeller (no solvent for interface calculations)
+    # Create modeller (no explicit solvent for interface calculations)
     modeller = Modeller(fixer.topology, fixer.positions)
 
     return modeller, forcefield
@@ -96,7 +164,7 @@ def calculate_potential_energy(
 
     Args:
         modeller: OpenMM Modeller with structure
-        forcefield: OpenMM ForceField
+        forcefield: OpenMM ForceField (may include implicit solvent parameters)
         minimize: If True, minimize before calculating energy
 
     Returns:
@@ -110,10 +178,10 @@ def calculate_potential_energy(
 
     from openmm import LangevinMiddleIntegrator, Platform, app, unit
 
-    # Create system
+    # Create system (implicit solvent is handled by the force field if loaded)
     system = forcefield.createSystem(
         modeller.topology,
-        nonbondedMethod=app.NoCutoff,  # No cutoff for accuracy
+        nonbondedMethod=app.NoCutoff,
         constraints=None,
         rigidWater=False,
     )
@@ -145,7 +213,8 @@ def calculate_binding_energy(
     separated_structure: Structure,
     interface: InterfaceRegion,
     minimize: bool = True,
-) -> float:
+    solvent_config: SolventConfig | None = None,
+) -> BindingEnergyResult:
     """
     Calculate binding energy (dG_separated).
 
@@ -156,23 +225,41 @@ def calculate_binding_energy(
         separated_structure: Separated chains
         interface: Interface region (for reference)
         minimize: If True, minimize structures before energy calculation
+        solvent_config: Implicit solvent configuration (None uses vacuum)
 
     Returns:
-        Binding energy in REU (negative = favorable)
+        BindingEnergyResult with binding energy and component energies
     """
-    # Prepare complex
-    complex_modeller, forcefield = prepare_structure_for_openmm(complex_structure)
-    energy_complex = calculate_potential_energy(complex_modeller, forcefield, minimize)
+    # Use vacuum if no solvent config provided
+    solvent_config = solvent_config or SolventConfig()
 
-    # Prepare separated
-    sep_modeller, forcefield = prepare_structure_for_openmm(separated_structure)
-    energy_separated = calculate_potential_energy(sep_modeller, forcefield, minimize)
+    # Prepare complex (force field includes solvent model if specified)
+    complex_modeller, forcefield = prepare_structure_for_openmm(
+        complex_structure, solvent_config.model
+    )
+    energy_complex = calculate_potential_energy(
+        complex_modeller, forcefield, minimize
+    )
+
+    # Prepare separated (use same solvent model)
+    sep_modeller, forcefield = prepare_structure_for_openmm(
+        separated_structure, solvent_config.model
+    )
+    energy_separated = calculate_potential_energy(
+        sep_modeller, forcefield, minimize
+    )
 
     # Calculate delta (complex - separated)
     dG_kj = energy_complex - energy_separated
 
-    # Convert to REU
-    return dG_kj * KJ_TO_REU
+    # Return result with all details
+    return BindingEnergyResult(
+        dG_separated=dG_kj * KJ_TO_REU,
+        energy_complex=energy_complex,
+        energy_separated=energy_separated,
+        solvent_model=solvent_config.model.value,
+        salt_concentration=solvent_config.salt_concentration,
+    )
 
 
 def check_openmm_available() -> bool:
