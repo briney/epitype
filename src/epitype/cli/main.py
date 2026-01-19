@@ -10,6 +10,7 @@ from epitype.cli.packstat import packstat_command
 from epitype.cli.run import run_command
 from epitype.cli.sasa import sasa_command
 from epitype.cli.shape import shape_command
+from epitype.cli.smoke import smoke_command
 
 app = typer.Typer(
     name="epitype",
@@ -26,6 +27,7 @@ app.command(name="energy")(energy_command)
 app.command(name="hbonds")(hbonds_command)
 app.command(name="shape")(shape_command)
 app.command(name="packstat")(packstat_command)
+app.command(name="smoke")(smoke_command)
 
 
 @app.command()
