@@ -34,17 +34,18 @@ pip install -e ".[dev]"
 
 ### Optional Dependencies
 
+All core features (SASA, H-bonds, PackStat) work out-of-the-box with the standard `pip` installation method. However, energy calculations and shape complementarity require additional dependencies that cannot be installed with pip or may need to be separately configured to work optimally with your system.
+
 #### Energy Calculations
 
-Energy calculations use OpenMM and pdbfixer, which are included in the core dependencies and install automatically.
-
-For CUDA-accelerated calculations or specific CUDA version matching, see the [OpenMM User Guide](https://docs.openmm.org/latest/userguide/index.html).
+Energy calculations use **OpenMM** and **pdbfixer**, which are included in the core dependencies and install automatically. For CUDA-accelerated calculations or specific CUDA version matching, see the [OpenMM User Guide](https://docs.openmm.org/latest/userguide/index.html).
 
 #### Shape Complementarity (NanoShaper)
 
-Shape complementarity calculations require NanoShaper, which must be built from source.
+Shape complementarity calculations require **NanoShaper**, which must be built from source.
 
-**Platform support:** Linux x86-64 only (gcc 8-9.5 tested)
+> [!NOTE]
+> Shape complementarity is only available on Linux x86-64 platforms, as NanoShaper does not support macOS or Windows.
 
 **Prerequisites (Ubuntu/Debian):**
 ```bash
@@ -70,11 +71,7 @@ python setup.py
 NanoShaper  # Should print usage information
 ```
 
-For more information: https://gitlab.iit.it/SDecherchi/nanoshaper
-
-**Note:** Shape complementarity is not available on macOS or Windows due to NanoShaper's platform limitations.
-
-All core features (SASA, H-bonds, PackStat) work without these optional dependencies.
+For more information, see the [NanoShaper documentation](https://gitlab.iit.it/SDecherchi/nanoshaper).
 
 ## Quick Start
 
