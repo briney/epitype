@@ -28,6 +28,15 @@ def _check_openmm_available() -> bool:
 # Conversion: kJ/mol to kcal/mol
 KJ_TO_REU = 0.239  # 1 kJ/mol ~ 0.239 kcal/mol
 
+# Standard amino acids recognized by AMBER force field
+STANDARD_RESIDUES = {
+    "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE",
+    "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
+    # Common variants
+    "HIE", "HID", "HIP",  # Histidine protonation states
+    "CYX",  # Disulfide-bonded cysteine
+}
+
 
 def prepare_structure_for_openmm(structure: Structure) -> tuple:
     """
@@ -58,6 +67,9 @@ def prepare_structure_for_openmm(structure: Structure) -> tuple:
     # Fix structure
     fixer = PDBFixer(filename=str(temp_path))
     fixer.findMissingResidues()
+    # Clear missing residues - we only want to fix atoms within existing residues,
+    # not add new residues at termini or internal gaps
+    fixer.missingResidues = {}
     fixer.findMissingAtoms()
     fixer.addMissingAtoms()
     fixer.addMissingHydrogens(pH=7.0)
@@ -169,11 +181,24 @@ def check_openmm_available() -> bool:
 
 
 def _write_temp_pdb(structure: Structure, path: Path) -> None:
-    """Write structure to temporary PDB file."""
+    """Write structure to temporary PDB file.
+
+    Only writes standard amino acid residues to ensure compatibility
+    with AMBER force field. Glycans, ligands, and other non-standard
+    residues are excluded.
+    """
     with open(path, "w") as f:
         atom_num = 1
         for chain in structure.chains.values():
+            last_protein_residue = None
+            has_protein = False
+
             for residue in chain.residues:
+                # Skip non-standard residues (glycans, ligands, etc.)
+                if residue.name not in STANDARD_RESIDUES:
+                    continue
+
+                has_protein = True
                 for atom in residue.atoms:
                     # Handle atom name formatting (left-justify if 4 chars)
                     atom_name = atom.name
@@ -182,8 +207,13 @@ def _write_temp_pdb(structure: Structure, path: Path) -> None:
                     else:
                         atom_name = f"{atom_name:<4s}"
 
+                    # PDB format columns:
+                    # 1-6: record, 7-11: serial, 12: space, 13-16: atom name,
+                    # 17: altLoc, 18-20: resName, 21: space, 22: chain,
+                    # 23-26: resSeq, 27: iCode, 28-30: spaces, 31-54: coords,
+                    # 55-60: occupancy, 61-66: B-factor, 77-78: element
                     f.write(
-                        f"ATOM  {atom_num:5d} {atom_name}"
+                        f"ATOM  {atom_num:5d} {atom_name} "
                         f"{residue.name:3s} {chain.chain_id:1s}"
                         f"{residue.seq_num:4d}{residue.insertion_code:1s}   "
                         f"{atom.coords[0]:8.3f}{atom.coords[1]:8.3f}{atom.coords[2]:8.3f}"
@@ -191,4 +221,14 @@ def _write_temp_pdb(structure: Structure, path: Path) -> None:
                         f"{atom.element:>2s}\n"
                     )
                     atom_num += 1
+                last_protein_residue = residue
+
+            # Write TER record after protein portion of each chain
+            if has_protein and last_protein_residue is not None:
+                f.write(
+                    f"TER   {atom_num:5d}      "
+                    f"{last_protein_residue.name:3s} {chain.chain_id:1s}"
+                    f"{last_protein_residue.seq_num:4d}{last_protein_residue.insertion_code:1s}\n"
+                )
+                atom_num += 1
         f.write("END\n")
