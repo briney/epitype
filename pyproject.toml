@@ -59,6 +59,9 @@ Homepage = "https://github.com/briney/epitype"
 Documentation = "https://epitype.readthedocs.io"
 Repository = "https://github.com/briney/epitype"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/epitype"]
 
