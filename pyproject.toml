@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "epitype"
+version = "0.1.0"
+description = "Protein-protein interface analysis toolkit"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Bryan Briney", email = "bryan@example.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+keywords = ["protein", "interface", "binding", "structural biology"]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "biopython>=1.81",
+    "freesasa>=2.2.0",
+    "openmm>=8.0.0",
+    "pdbfixer @ git+https://github.com/openmm/pdbfixer.git",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "mypy>=1.5.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.4.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.4.0",
+    "mkdocstrings[python]>=0.23.0",
+]
+
+[project.scripts]
+epitype = "epitype.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/briney/epitype"
+Documentation = "https://epitype.readthedocs.io"
+Repository = "https://github.com/briney/epitype"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/epitype"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=epitype --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# B008 is a false positive for Typer (function calls in defaults are standard Typer pattern)
+"src/epitype/cli/*.py" = ["B008"]

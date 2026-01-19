@@ -1,0 +1,42 @@
+{
+  "description": "Expected metrics for 4FQI (antibody-antigen complex, chains HL vs A)",
+  "chain_spec": "HL_A",
+  "expected_ranges": {
+    "dSASA_int": {
+      "min": 4500,
+      "max": 6500,
+      "unit": "Angstrom^2"
+    },
+    "hbonds_int": {
+      "min": 2,
+      "max": 15
+    },
+    "packstat": {
+      "min": 0.7,
+      "max": 0.9
+    },
+    "sc_value": {
+      "min": 0.5,
+      "max": 0.8,
+      "note": "Only computed if NanoShaper available"
+    }
+  },
+  "reference_values": {
+    "dG_separated": 0.0,
+    "dSASA_int": 5689.30,
+    "dG_per_dSASA": 0.0,
+    "sc_value": 0.0,
+    "packstat": 0.773,
+    "delta_unsat_hbonds": 0,
+    "hbonds_int": 4,
+    "sasa_complex": 44126.77,
+    "sasa_separated": 49816.07,
+    "interface_residues_1_count": 7,
+    "interface_residues_2_count": 9
+  },
+  "notes": [
+    "Values computed with interface_cutoff=8.0",
+    "Energy and shape complementarity not computed (external dependencies)",
+    "Reference values may vary slightly depending on probe radius and algorithm"
+  ]
+}

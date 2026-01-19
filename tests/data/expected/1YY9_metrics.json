@@ -1,0 +1,42 @@
+{
+  "description": "Expected metrics for 1YY9 (antibody-antigen complex, chains CD vs A)",
+  "chain_spec": "CD_A",
+  "expected_ranges": {
+    "dSASA_int": {
+      "min": 2500,
+      "max": 3500,
+      "unit": "Angstrom^2"
+    },
+    "hbonds_int": {
+      "min": 10,
+      "max": 25
+    },
+    "packstat": {
+      "min": 0.7,
+      "max": 0.9
+    },
+    "sc_value": {
+      "min": 0.5,
+      "max": 0.8,
+      "note": "Only computed if NanoShaper available"
+    }
+  },
+  "reference_values": {
+    "dG_separated": 0.0,
+    "dSASA_int": 3100.24,
+    "dG_per_dSASA": 0.0,
+    "sc_value": 0.0,
+    "packstat": 0.802,
+    "delta_unsat_hbonds": 3,
+    "hbonds_int": 16,
+    "sasa_complex": 52945.52,
+    "sasa_separated": 56045.76,
+    "interface_residues_1_count": 22,
+    "interface_residues_2_count": 26
+  },
+  "notes": [
+    "Values computed with interface_cutoff=8.0",
+    "Energy and shape complementarity not computed (external dependencies)",
+    "Reference values may vary slightly depending on probe radius and algorithm"
+  ]
+}
