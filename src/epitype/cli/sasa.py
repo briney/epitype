@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from epitype.cli.common import StructureResolutionError, resolve_structure
 from epitype.io.parsers import parse_structure
 from epitype.metrics.sasa import calculate_sasa
 
@@ -15,10 +16,9 @@ console = Console()
 
 
 def sasa_command(
-    structure: Path = typer.Argument(
+    structure: str = typer.Argument(
         ...,
-        help="Path to PDB or mmCIF file",
-        exists=True,
+        help="Path to PDB/mmCIF file or PDB ID (e.g., 1yy9)",
     ),
     probe_radius: float = typer.Option(
         1.4,
@@ -41,10 +41,18 @@ def sasa_command(
     """
     Calculate SASA for a structure.
 
-    Example:
+    Examples:
         epitype sasa structure.pdb --per-residue
+        epitype sasa 1yy9 --per-residue
     """
-    struct = parse_structure(structure)
+    # Resolve structure input (file path or PDB ID)
+    try:
+        structure_path = resolve_structure(structure)
+    except StructureResolutionError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+
+    struct = parse_structure(structure_path)
     result = calculate_sasa(struct, probe_radius)
 
     if output:
@@ -60,7 +68,7 @@ def sasa_command(
             json.dump(data, f, indent=2)
         console.print(f"Results written to {output}")
     else:
-        table = Table(title=f"SASA: {structure.name}")
+        table = Table(title=f"SASA: {structure_path.name}")
         table.add_column("Metric", style="cyan")
         table.add_column("Value (A^2)", style="green", justify="right")
 

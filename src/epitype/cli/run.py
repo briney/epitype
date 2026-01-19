@@ -8,17 +8,16 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from epitype.analysis.pipeline import AnalysisConfig, analyze_interface
+from epitype.cli.common import StructureResolutionError, resolve_structure
 from epitype.io.writers import format_metrics_table, write_csv, write_json
 
 console = Console()
 
 
 def run_command(
-    structure: Path = typer.Argument(
+    structure: str = typer.Argument(
         ...,
-        help="Path to PDB or mmCIF file",
-        exists=True,
-        readable=True,
+        help="Path to PDB/mmCIF file or PDB ID (e.g., 1yy9)",
     ),
     chains: str = typer.Option(
         ...,
@@ -65,9 +64,17 @@ def run_command(
     Computes binding energy, buried surface area, shape complementarity,
     packing quality, and hydrogen bond metrics.
 
-    Example:
+    Examples:
         epitype run structure.pdb --chains HL_A -o results.json
+        epitype run 1yy9 --chains CD_A -o results.json
     """
+    # Resolve structure input (file path or PDB ID)
+    try:
+        structure_path = resolve_structure(structure)
+    except StructureResolutionError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+
     config = AnalysisConfig(
         chain_spec=chains,
         interface_cutoff=cutoff,
@@ -88,9 +95,9 @@ def run_command(
                 def progress_callback(step: str, frac: float):
                     progress.update(task, description=f"{step}...")
 
-                metrics = analyze_interface(structure, config, progress_callback)
+                metrics = analyze_interface(structure_path, config, progress_callback)
         else:
-            metrics = analyze_interface(structure, config)
+            metrics = analyze_interface(structure_path, config)
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1) from e
@@ -101,16 +108,16 @@ def run_command(
     # Output results
     if output:
         if output.suffix == ".json":
-            write_json(metrics, output, structure_name=structure.stem)
+            write_json(metrics, output, structure_name=structure_path.stem)
             console.print(f"Results written to {output}")
         elif output.suffix == ".csv":
-            write_csv(metrics, output, structure_name=structure.stem)
+            write_csv(metrics, output, structure_name=structure_path.stem)
             console.print(f"Results written to {output}")
         else:
             # Default to JSON
-            write_json(metrics, output, structure_name=structure.stem)
+            write_json(metrics, output, structure_name=structure_path.stem)
             console.print(f"Results written to {output}")
     else:
         # Print to console
         console.print()
-        console.print(format_metrics_table(metrics, structure_name=structure.name))
+        console.print(format_metrics_table(metrics, structure_name=structure_path.name))

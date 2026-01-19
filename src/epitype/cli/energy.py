@@ -8,14 +8,15 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from epitype.cli.common import StructureResolutionError, resolve_structure
+
 console = Console()
 
 
 def energy_command(
-    structure: Path = typer.Argument(
+    structure: str = typer.Argument(
         ...,
-        help="Path to PDB or mmCIF file",
-        exists=True,
+        help="Path to PDB/mmCIF file or PDB ID (e.g., 1yy9)",
     ),
     chains: str = typer.Option(
         ...,
@@ -40,8 +41,9 @@ def energy_command(
 
     Requires OpenMM and PDBFixer to be installed.
 
-    Example:
+    Examples:
         epitype energy structure.pdb --chains HL_A
+        epitype energy 1yy9 --chains CD_A
     """
     from epitype.metrics.energy import (
         calculate_binding_energy,
@@ -53,12 +55,19 @@ def energy_command(
         console.print("Install with: conda install -c conda-forge openmm pdbfixer")
         raise typer.Exit(1)
 
+    # Resolve structure input (file path or PDB ID)
+    try:
+        structure_path = resolve_structure(structure)
+    except StructureResolutionError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+
     from epitype.core.interface import detect_interface, parse_chain_groups
     from epitype.core.separation import separate_chains
     from epitype.io.parsers import parse_structure
 
     # Parse structure
-    struct = parse_structure(structure)
+    struct = parse_structure(structure_path)
 
     # Parse chain specification
     group1, group2 = parse_chain_groups(chains)
@@ -89,7 +98,7 @@ def energy_command(
             json.dump(data, f, indent=2)
         console.print(f"Results written to {output}")
     else:
-        table = Table(title=f"Binding Energy: {structure.name}")
+        table = Table(title=f"Binding Energy: {structure_path.name}")
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="green", justify="right")
 

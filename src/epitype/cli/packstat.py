@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from epitype.cli.common import StructureResolutionError, resolve_structure
 from epitype.core.interface import detect_interface, parse_chain_groups
 from epitype.io.parsers import parse_structure
 from epitype.metrics.packstat import calculate_packstat
@@ -16,10 +17,9 @@ console = Console()
 
 
 def packstat_command(
-    structure: Path = typer.Argument(
+    structure: str = typer.Argument(
         ...,
-        help="Path to PDB or mmCIF file",
-        exists=True,
+        help="Path to PDB/mmCIF file or PDB ID (e.g., 1yy9)",
     ),
     chains: str = typer.Option(
         ...,
@@ -45,11 +45,19 @@ def packstat_command(
     PackStat uses a multi-probe algorithm and measures how well
     the interface is packed.
 
-    Example:
+    Examples:
         epitype packstat structure.pdb --chains HL_A
+        epitype packstat 1yy9 --chains CD_A
     """
+    # Resolve structure input (file path or PDB ID)
+    try:
+        structure_path = resolve_structure(structure)
+    except StructureResolutionError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+
     # Parse structure
-    struct = parse_structure(structure)
+    struct = parse_structure(structure_path)
 
     # Parse chain specification
     group1, group2 = parse_chain_groups(chains)
@@ -76,7 +84,7 @@ def packstat_command(
             json.dump(data, f, indent=2)
         console.print(f"Results written to {output}")
     else:
-        table = Table(title=f"PackStat: {structure.name}")
+        table = Table(title=f"PackStat: {structure_path.name}")
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="green", justify="right")
 
