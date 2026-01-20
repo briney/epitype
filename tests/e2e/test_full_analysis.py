@@ -170,6 +170,42 @@ class TestKnownStructureMetricRanges:
 
         assert 0.0 <= metrics.packstat <= 1.0, f"packstat={metrics.packstat}"
 
+    def test_1yy9_sc_range(self, pdb_1yy9: Path):
+        """Test 1YY9 shape complementarity is in expected range."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        metrics = analyze(
+            pdb_1yy9,
+            chains="CD_A",
+            compute_energy=False,
+            compute_shape=True,
+            compute_packstat=False,
+        )
+
+        # Good antibody-antigen interfaces typically have Sc > 0.5
+        assert 0.50 < metrics.sc_value < 0.85, f"sc_value={metrics.sc_value}"
+
+    def test_4fqi_sc_range(self, pdb_4fqi: Path):
+        """Test 4FQI shape complementarity is in expected range."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        metrics = analyze(
+            pdb_4fqi,
+            chains="HL_A",
+            compute_energy=False,
+            compute_shape=True,
+            compute_packstat=False,
+        )
+
+        # Antibody-antigen interfaces should have moderate to good Sc
+        assert 0.45 < metrics.sc_value < 0.80, f"sc_value={metrics.sc_value}"
+
 
 class TestMetricsConsistency:
     """Test internal consistency of computed metrics."""
@@ -281,3 +317,58 @@ class TestErrorHandling:
                 chains="CD_A",
                 interface_cutoff=0.1,  # Very small, no contacts
             )
+
+
+class TestShapeComplementarityE2E:
+    """End-to-end tests for shape complementarity analysis."""
+
+    def test_shape_analysis_workflow(self, pdb_1yy9: Path):
+        """Test complete shape analysis workflow."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        from epitype.metrics.shape import calculate_shape_complementarity
+
+        # Load and detect interface
+        structure = load_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+
+        # Calculate Sc
+        result = calculate_shape_complementarity(structure, interface)
+
+        # Validate result
+        assert result.sc_value > 0
+        assert result.interface_area > 0
+
+    def test_shape_included_in_full_analysis(self, pdb_1yy9: Path):
+        """Test that shape is included when compute_shape=True."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        metrics = analyze(
+            pdb_1yy9,
+            chains="CD_A",
+            compute_energy=False,
+            compute_shape=True,
+            compute_packstat=False,
+        )
+
+        # Sc should be computed (non-zero)
+        assert metrics.sc_value > 0
+
+    def test_shape_excluded_from_analysis(self, pdb_1yy9: Path):
+        """Test that shape is excluded when compute_shape=False."""
+        metrics = analyze(
+            pdb_1yy9,
+            chains="CD_A",
+            compute_energy=False,
+            compute_shape=False,
+            compute_packstat=False,
+        )
+
+        # Sc should be default (0.0)
+        assert metrics.sc_value == 0.0

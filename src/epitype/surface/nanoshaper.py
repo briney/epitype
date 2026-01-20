@@ -152,7 +152,7 @@ def _parse_nanoshaper_output(
 
 def check_nanoshaper_available(nanoshaper_path: str | None = None) -> bool:
     """
-    Check if NanoShaper is available.
+    Check if NanoShaper is available and can execute.
 
     Args:
         nanoshaper_path: Path to check. If None, uses default resolution order.
@@ -164,12 +164,19 @@ def check_nanoshaper_available(nanoshaper_path: str | None = None) -> bool:
 
     try:
         # NanoShaper prints usage info when run without args and returns non-zero
-        subprocess.run(
+        result = subprocess.run(
             [nanoshaper_path],
             capture_output=True,
             timeout=5,
         )
+        # Check for library loading errors (binary exists but can't run)
+        stderr = result.stderr.decode("utf-8", errors="ignore") if result.stderr else ""
+        if "error while loading shared libraries" in stderr:
+            return False
+        # Exit code 127 typically means command not found or library loading failed
+        if result.returncode == 127:
+            return False
         # NanoShaper returns non-zero when run without args, but that's OK
         return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False

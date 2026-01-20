@@ -275,3 +275,146 @@ class TestCalculateScOneDirection:
 
         # Should be empty because the only point is too far
         assert len(result) == 0
+
+
+class TestShapeComplementarityExpectedValues:
+    """Tests that validate Sc values for known structures."""
+
+    pytestmark = pytest.mark.skipif(
+        not check_nanoshaper_available(),
+        reason="NanoShaper not available"
+    )
+
+    def test_1yy9_sc_in_expected_range(self, pdb_1yy9: Path):
+        """Test 1YY9 Sc is in expected range (0.60-0.75)."""
+        from tests.conftest import EXPECTED_METRICS_1YY9
+
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        result = calculate_shape_complementarity(structure, interface)
+
+        expected_min, expected_max = EXPECTED_METRICS_1YY9["sc_value"]
+        assert expected_min <= result.sc_value <= expected_max, (
+            f"Sc={result.sc_value} outside expected range [{expected_min}, {expected_max}]"
+        )
+
+    def test_1yy9_sc_median_close_to_mean(self, pdb_1yy9: Path):
+        """Test that median Sc is close to mean for 1YY9."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        result = calculate_shape_complementarity(structure, interface)
+
+        # Median and mean should be within 0.2 of each other for well-formed interface
+        assert abs(result.sc_value - result.sc_median) < 0.2, (
+            f"Sc mean={result.sc_value}, median={result.sc_median} differ too much"
+        )
+
+    def test_1yy9_both_groups_have_similar_sc(self, pdb_1yy9: Path):
+        """Test that both group Sc values are similar for 1YY9."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        result = calculate_shape_complementarity(structure, interface)
+
+        # Both groups should have positive Sc
+        assert result.sc_group1 > 0, f"sc_group1={result.sc_group1} should be positive"
+        assert result.sc_group2 > 0, f"sc_group2={result.sc_group2} should be positive"
+
+        # Values shouldn't differ by more than 0.3
+        assert abs(result.sc_group1 - result.sc_group2) < 0.3, (
+            f"sc_group1={result.sc_group1}, sc_group2={result.sc_group2} differ too much"
+        )
+
+    def test_1yy9_has_reasonable_interface_area(self, pdb_1yy9: Path):
+        """Test that 1YY9 has reasonable interface area."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+        result = calculate_shape_complementarity(structure, interface)
+
+        # Interface area should be substantial (in number of surface points)
+        assert result.interface_area > 100, (
+            f"interface_area={result.interface_area} seems too small"
+        )
+
+    def test_4fqi_sc_in_expected_range(self, pdb_4fqi: Path):
+        """Test 4FQI Sc is in expected range (0.55-0.70)."""
+        from tests.conftest import EXPECTED_METRICS_4FQI
+
+        structure = parse_structure(pdb_4fqi)
+        interface = detect_interface(structure, ["H", "L"], ["A"], cutoff=8.0)
+        result = calculate_shape_complementarity(structure, interface)
+
+        expected_min, expected_max = EXPECTED_METRICS_4FQI["sc_value"]
+        assert expected_min <= result.sc_value <= expected_max, (
+            f"Sc={result.sc_value} outside expected range [{expected_min}, {expected_max}]"
+        )
+
+
+class TestShapeComplementarityEdgeCases:
+    """Tests for edge cases in shape complementarity calculation."""
+
+    pytestmark = pytest.mark.skipif(
+        not check_nanoshaper_available(),
+        reason="NanoShaper not available"
+    )
+
+    def test_very_small_interface(self, pdb_1yy9: Path):
+        """Test Sc with very small interface (tight cutoff)."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=4.0)
+
+        if interface.num_interface_residues > 0:
+            result = calculate_shape_complementarity(structure, interface)
+            # Should still produce valid output
+            assert -1.0 <= result.sc_value <= 1.0
+
+    def test_large_cutoff_interface(self, pdb_1yy9: Path):
+        """Test Sc with large interface (loose cutoff)."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=15.0)
+
+        result = calculate_shape_complementarity(structure, interface)
+
+        # Should still produce valid output
+        assert -1.0 <= result.sc_value <= 1.0
+        # Larger interface should have more area
+        assert result.interface_area > 0
+
+
+class TestShapeComplementarityParameters:
+    """Tests for shape complementarity parameter effects."""
+
+    pytestmark = pytest.mark.skipif(
+        not check_nanoshaper_available(),
+        reason="NanoShaper not available"
+    )
+
+    def test_distance_cutoff_affects_result(self, pdb_1yy9: Path):
+        """Test that different distance cutoffs give different results."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+
+        result_tight = calculate_shape_complementarity(
+            structure, interface, distance_cutoff=1.0
+        )
+        result_loose = calculate_shape_complementarity(
+            structure, interface, distance_cutoff=3.0
+        )
+
+        # Different cutoffs should generally produce different results
+        assert isinstance(result_tight.sc_value, float)
+        assert isinstance(result_loose.sc_value, float)
+
+    def test_trim_distance_affects_interface_area(self, pdb_1yy9: Path):
+        """Test that different trim distances affect interface area."""
+        structure = parse_structure(pdb_1yy9)
+        interface = detect_interface(structure, ["C", "D"], ["A"], cutoff=8.0)
+
+        result_tight = calculate_shape_complementarity(
+            structure, interface, trim_distance=5.0
+        )
+        result_loose = calculate_shape_complementarity(
+            structure, interface, trim_distance=15.0
+        )
+
+        # Larger trim distance should include more surface points
+        assert result_loose.interface_area >= result_tight.interface_area

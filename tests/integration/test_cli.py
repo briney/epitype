@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from epitype.cli.main import app
@@ -250,3 +251,173 @@ class TestHelpText:
         assert result.exit_code == 0
         assert "--probe-radius" in result.stdout
         assert "--per-residue" in result.stdout
+
+
+class TestShapeCommand:
+    """Tests for the shape command."""
+
+    def test_shape_basic(self, pdb_1yy9: Path):
+        """Test basic shape command."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "CD_A"],
+        )
+
+        assert result.exit_code == 0
+        assert "Shape Complementarity" in result.stdout
+        assert "Sc (overall)" in result.stdout
+
+    def test_shape_json_output(self, pdb_1yy9: Path, tmp_path: Path):
+        """Test shape command with JSON output."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        output_path = tmp_path / "shape.json"
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "CD_A", "--output", str(output_path)],
+        )
+
+        assert result.exit_code == 0
+        assert output_path.exists()
+
+        with open(output_path) as f:
+            data = json.load(f)
+
+        assert "sc_value" in data
+        assert "sc_median" in data
+        assert "sc_group1" in data
+        assert "sc_group2" in data
+        assert "interface_area" in data
+
+    def test_shape_custom_cutoff(self, pdb_1yy9: Path):
+        """Test shape command with custom cutoff."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "CD_A", "--cutoff", "10.0"],
+        )
+
+        assert result.exit_code == 0
+        assert "Sc (overall)" in result.stdout
+
+    def test_shape_invalid_chains(self, pdb_1yy9: Path):
+        """Test shape command with invalid chains."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "invalid"],
+        )
+
+        assert result.exit_code == 1
+
+    def test_shape_nonexistent_chains(self, pdb_1yy9: Path):
+        """Test shape command with non-existent chains."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "XY_Z"],
+        )
+
+        assert result.exit_code == 1
+
+    def test_shape_no_interface(self, pdb_1yy9: Path):
+        """Test shape command when no interface detected."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "CD_A", "--cutoff", "0.1"],
+        )
+
+        assert result.exit_code == 1
+        assert "No interface detected" in result.stdout
+
+    def test_shape_displays_quality_indicator(self, pdb_1yy9: Path):
+        """Test that shape command displays quality indicator."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "CD_A"],
+        )
+
+        assert result.exit_code == 0
+        # Should have one of the quality indicators
+        assert any(q in result.stdout for q in ["good", "moderate", "poor"])
+
+    def test_shape_shows_nanoshaper_source(self, pdb_1yy9: Path):
+        """Test that shape command shows NanoShaper source."""
+        from epitype.surface.nanoshaper import check_nanoshaper_available
+
+        if not check_nanoshaper_available():
+            pytest.skip("NanoShaper not available")
+
+        result = runner.invoke(
+            app,
+            ["shape", str(pdb_1yy9), "--chains", "CD_A"],
+        )
+
+        assert result.exit_code == 0
+        assert "Using NanoShaper" in result.stdout
+        # Should show source (bundled, environment, or system)
+        assert any(s in result.stdout for s in ["bundled", "environment", "system"])
+
+    def test_shape_help(self):
+        """Test shape command help."""
+        result = runner.invoke(app, ["shape", "--help"])
+
+        assert result.exit_code == 0
+        assert "--chains" in result.stdout
+        assert "--cutoff" in result.stdout
+        assert "--output" in result.stdout
+
+
+class TestShapeCommandWithoutNanoshaper:
+    """Tests for shape command when NanoShaper is unavailable."""
+
+    def test_shape_unavailable_message(self, pdb_1yy9: Path):
+        """Test appropriate error when NanoShaper unavailable."""
+        from unittest.mock import patch
+
+        with patch("epitype.bin.get_nanoshaper_info") as mock_info:
+            mock_info.return_value = {
+                "path": "NanoShaper",
+                "source": "system",
+                "available": False,
+                "platform": "linux-x86_64",
+            }
+
+            result = runner.invoke(
+                app,
+                ["shape", str(pdb_1yy9), "--chains", "CD_A"],
+            )
+
+            assert result.exit_code == 1
+            assert "NanoShaper is not available" in result.stdout
