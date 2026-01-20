@@ -39,18 +39,25 @@ def shape_command(
     """
     Calculate shape complementarity (Sc) for a protein-protein interface.
 
-    Requires NanoShaper to be installed and available in PATH.
+    Uses bundled NanoShaper binary if available, or set EPITYPE_NANOSHAPER_PATH
+    to use a custom binary.
 
     Examples:
         epitype shape structure.pdb --chains HL_A
         epitype shape 1yy9 --chains CD_A
     """
-    from epitype.surface.nanoshaper import check_nanoshaper_available
+    from epitype.bin import get_nanoshaper_info
 
-    if not check_nanoshaper_available():
+    ns_info = get_nanoshaper_info()
+
+    if not ns_info["available"]:
         console.print("[red]Error: NanoShaper is not available.[/red]")
-        console.print("Download from: https://gitlab.iit.it/SDecherchi/nanoshaper")
+        if ns_info["source"] == "system":
+            console.print("Download from: https://gitlab.iit.it/SDecherchi/nanoshaper")
+        console.print("Or set EPITYPE_NANOSHAPER_PATH to specify a custom binary.")
         raise typer.Exit(1)
+
+    console.print(f"[dim]Using NanoShaper: {ns_info['path']} ({ns_info['source']})[/dim]")
 
     # Resolve structure input (file path or PDB ID)
     try:

@@ -15,7 +15,7 @@ def generate_surface(
     structure: Structure,
     probe_radius: float = 1.4,
     grid_scale: float = 2.0,
-    nanoshaper_path: str = "NanoShaper",
+    nanoshaper_path: str | None = None,
 ) -> list[SurfacePoint]:
     """
     Generate molecular surface using NanoShaper.
@@ -24,11 +24,19 @@ def generate_surface(
         structure: Input structure
         probe_radius: Probe radius in Angstroms (default 1.4 for water)
         grid_scale: Grid resolution in grids per Angstrom (default 2.0)
-        nanoshaper_path: Path to NanoShaper executable
+        nanoshaper_path: Path to NanoShaper executable. If None, uses:
+            1. EPITYPE_NANOSHAPER_PATH environment variable
+            2. Bundled binary (if available for platform)
+            3. System PATH lookup
 
     Returns:
         List of surface points with coordinates and normals
     """
+    if nanoshaper_path is None:
+        from epitype.bin import get_nanoshaper_path
+
+        nanoshaper_path = get_nanoshaper_path()
+
     if structure.num_atoms == 0:
         return []
 
@@ -142,11 +150,21 @@ def _parse_nanoshaper_output(
     return surface_points
 
 
-def check_nanoshaper_available(nanoshaper_path: str = "NanoShaper") -> bool:
-    """Check if NanoShaper is available."""
+def check_nanoshaper_available(nanoshaper_path: str | None = None) -> bool:
+    """
+    Check if NanoShaper is available.
+
+    Args:
+        nanoshaper_path: Path to check. If None, uses default resolution order.
+    """
+    if nanoshaper_path is None:
+        from epitype.bin import get_nanoshaper_path
+
+        nanoshaper_path = get_nanoshaper_path()
+
     try:
         # NanoShaper prints usage info when run without args and returns non-zero
-        result = subprocess.run(
+        subprocess.run(
             [nanoshaper_path],
             capture_output=True,
             timeout=5,

@@ -64,6 +64,7 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/epitype"]
+artifacts = ["bin/*/NanoShaper"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

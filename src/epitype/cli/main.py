@@ -38,6 +38,34 @@ def version():
     console.print(f"epitype v{__version__}")
 
 
+@app.command()
+def info():
+    """Show system information and external tool status."""
+    from rich.table import Table
+
+    from epitype import __version__
+    from epitype.bin import get_nanoshaper_info
+
+    console.print(f"[bold]epitype[/bold] v{__version__}")
+    console.print()
+
+    table = Table(title="External Tools")
+    table.add_column("Tool", style="cyan")
+    table.add_column("Status")
+    table.add_column("Path")
+    table.add_column("Source")
+
+    # NanoShaper info
+    ns_info = get_nanoshaper_info()
+    ns_status = "[green]available[/green]" if ns_info["available"] else "[red]not found[/red]"
+    table.add_row("NanoShaper", ns_status, ns_info["path"], ns_info["source"])
+
+    console.print(table)
+    console.print()
+    console.print(f"[dim]Platform: {ns_info['platform']}[/dim]")
+    console.print("[dim]Set EPITYPE_NANOSHAPER_PATH to use a custom NanoShaper binary[/dim]")
+
+
 @app.callback()
 def main_callback():
     """Interface Analyzer: Compute protein-protein interface metrics."""
